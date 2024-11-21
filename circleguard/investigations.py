@@ -387,7 +387,7 @@ class Investigations:
                 # keypress not on object, so we move to the next keypress
                 else:
                     keydown_i += 1
-            elif keydown_t >= notelock_end_time:
+            elif keydown_t > notelock_end_time:
                 # can no longer interact with hitobject after notelock_end_time
                 # so we move to the next object
                 hitobj_i += 1
