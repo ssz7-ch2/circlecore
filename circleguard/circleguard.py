@@ -436,7 +436,7 @@ class Circleguard:
         hits = [hit for hit in hits if hit.within(within)]
         return hits
 
-    def judgments(self, replay, beatmap=None) -> Iterable[Judgment]:
+    def judgments(self, replay, beatmap=None, slider_acc=False) -> Iterable[Judgment]:
         """
         The locations in the replay where a hitobject is hit or missed.
         Judgments are marked as either misses, 50s, 100s, or 300s.
@@ -465,7 +465,7 @@ class Circleguard:
             raise ValueError("The judgments of a replay that does not know "
                 "what map it was set on cannot be calculated.")
 
-        return Investigations.judgments(replay, beatmap)
+        return Investigations.judgments(replay, beatmap, slider_acc)
 
     def frametime_graph(self, replay, cv=True, figure=None,
         show_expected_frametime=True):

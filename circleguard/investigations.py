@@ -275,7 +275,7 @@ class Investigations:
     # TODO add exception for 2b objects (>1 object at the same time) for current
     # version of notelock
     @staticmethod
-    def judgments(replay, beatmap):
+    def judgments(replay, beatmap, slider_acc=False):
         """
         Determines the judgments (where hitobjs were hit or missed, and if hit
         then what type of hit - a 300, 100, or 50) of the given ``replay``
@@ -331,6 +331,87 @@ class Investigations:
         hitobj_i = 0
         keydown_i = 0
 
+        COMBO_EXPONENT = 0.5
+        combo_info = {
+            "current_combo_portion": 0,
+            "max_combo_portion": 0,
+            "combo_value": 0,
+            "simulated_full_combo": 0,
+            "max_combo": 0
+        }
+
+        def update_combo_portion(hitobj, combo_info, hit=True, classic=False):
+            # update the max combo portionn and simulated full combo
+            if isinstance(hitobj, Slider):
+                if classic:
+                    # 1 combo and 30 base score for the sliderhead
+                    combo_info["simulated_full_combo"] += 1
+                    combo_info["max_combo_portion"] += 30 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+
+                    # 1 combo and 30 base score for each slidertick (slider repeats included)
+                    for _ in range(hitobj.ticks - 2):
+                        combo_info["simulated_full_combo"] += 1
+                        combo_info["max_combo_portion"] += 30 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+
+                    # 0 combo and 10 base score for the sliderend
+                    combo_info["max_combo_portion"] += 10 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+
+                    # 1 combo and 300 base score for the entire slider
+                    combo_info["simulated_full_combo"] += 1
+                    combo_info["max_combo_portion"] += 300 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+                else:
+                    # 1 combo and 300 base score for the sliderhead
+                    combo_info["simulated_full_combo"] += 1
+                    combo_info["max_combo_portion"] += 300 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+
+                    # 1 combo and 30 base score for each slidertick (slider repeats included)
+                    for _ in range(hitobj.ticks - 2):
+                        combo_info["simulated_full_combo"] += 1
+                        combo_info["max_combo_portion"] += 30 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+                    
+                    # 1 combo and 150 base score for the sliderend
+                    combo_info["simulated_full_combo"] += 1
+                    combo_info["max_combo_portion"] += 150 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+            else:
+                combo_info["simulated_full_combo"] += 1
+                combo_info["max_combo_portion"] += 300 * pow(combo_info["simulated_full_combo"], COMBO_EXPONENT)
+            
+            # assume spinners are always hit
+            if isinstance(hitobj, SliderSpinner):
+                combo_info["current_combo"] += 1
+                combo_info["current_combo_portion"] += 300 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                combo_info["max_combo"] = max(combo_info["max_combo"], combo_info["current_combo"])
+                return
+
+            # update the current combo portion and current combo
+            if hit:
+                # assume sliderticks and sliderends are hit
+                if isinstance(hitobj, Slider):
+                    if classic:
+                        combo_info["current_combo"] += 1
+                        combo_info["current_combo_portion"] += 30 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                        for _ in range(hitobj.ticks - 2):
+                            combo_info["current_combo"] += 1
+                            combo_info["current_combo_portion"] += 30 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                        combo_info["current_combo_portion"] += 10 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                        combo_info["current_combo"] += 1
+                        combo_info["current_combo_portion"] += 300 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                    else:
+                        combo_info["current_combo"] += 1
+                        combo_info["current_combo_portion"] += 300 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                        for _ in range(hitobj.ticks - 2):
+                            combo_info["current_combo"] += 1
+                            combo_info["current_combo_portion"] += 30 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                        combo_info["current_combo"] += 1
+                        combo_info["current_combo_portion"] += 150 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+                else:
+                    combo_info["current_combo"] += 1
+                    combo_info["current_combo_portion"] += 300 * pow(combo_info["current_combo"], COMBO_EXPONENT)
+            else:
+                combo_info["current_combo"] = 0
+            
+            combo_info["max_combo"] = max(combo_info["max_combo"], combo_info["current_combo"])
+
         while hitobj_i < len(hitobjs) and keydown_i < len(keydowns):
             hitobj = hitobjs[hitobj_i]
             hitobj_t = hitobj.time.total_seconds() * 1000
@@ -366,7 +447,7 @@ class Investigations:
 
 
             # can't press on hitobjects before hitwindowmiss
-            if keydown_t < hitobj_t - 400:
+            if keydown_t <= hitobj_t - 400:
                 keydown_i += 1
                 continue
 
@@ -384,29 +465,32 @@ class Investigations:
                     else:
                         keydown_i += 1
                     hitobj_i += 1
+                    update_combo_portion(hitobj, combo_info, hit=False)
                 # keypress not on object, so we move to the next keypress
                 else:
                     keydown_i += 1
-            elif keydown_t >= notelock_end_time:
+            elif keydown_t > notelock_end_time:
                 # can no longer interact with hitobject after notelock_end_time
                 # so we move to the next object
                 hitobj_i += 1
+                update_combo_portion(hitobj, combo_info, hit=False)
             else:
                 if (keydown_t < hitobj_t + hw_50 and
                     np.linalg.norm(keydown_xy - hitobj_xy) <= hitradius and
                     hitobj_type != 2):
 
-                    # sliderheads are always 300s even if you click early or
-                    # late
-                    if hitobj_type == 1:
+                    if hitobj_type == 1 and slider_acc == False:
                         hit_type = JudgmentType.Hit300
-                    # TODO: should these ranges be inclusive?
+                        update_combo_portion(hitobj, combo_info, hit=True, classic=True)
                     elif abs(keydown_t - hitobj_t) < hw_300:
                         hit_type = JudgmentType.Hit300
+                        update_combo_portion(hitobj, combo_info, hit=True)
                     elif abs(keydown_t - hitobj_t) < hw_100:
                         hit_type = JudgmentType.Hit100
+                        update_combo_portion(hitobj, combo_info, hit=True)
                     elif abs(keydown_t - hitobj_t) < hw_50:
                         hit_type = JudgmentType.Hit50
+                        update_combo_portion(hitobj, combo_info, hit=True)
 
                     judgment = Hit(hitobj, keydown_t, keydown_xy,
                         replay, beatmap, hit_type)
@@ -435,7 +519,9 @@ class Investigations:
                 judgment = Miss(hitobjs[i], replay, beatmap)
                 judgments.append(judgment)
 
-        return judgments
+        combo_progress = combo_info["current_combo_portion"] / combo_info["max_combo_portion"]
+        
+        return (judgments, combo_progress)
 
     @staticmethod
     def similarity(replay1, replay2, method, num_chunks, mods_unknown):
