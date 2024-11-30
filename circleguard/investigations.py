@@ -335,7 +335,7 @@ class Investigations:
         combo_info = {
             "current_combo_portion": 0,
             "max_combo_portion": 0,
-            "combo_value": 0,
+            "current_combo": 0,
             "simulated_full_combo": 0,
             "max_combo": 0
         }
