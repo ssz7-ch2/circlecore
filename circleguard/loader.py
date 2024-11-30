@@ -50,7 +50,7 @@ def check_cache(function):
         if not decompressed_lzma:
             return function(*args, **kwargs)
 
-        return osrparse.parse_replay_data(decompressed_lzma, decompressed=True)
+        return osrparse.parse_replay_data(decompressed_lzma, decompressed=False, decoded=True)
     return wrapper
 
 
@@ -502,7 +502,7 @@ class Loader:
         if not self.write_to_cache:
             return
 
-        compressed_bytes = wtc.compress(lzma_bytes)
+        compressed_bytes = lzma_bytes
         beatmap_id = replay_info.beatmap_id
         user_id = replay_info.user_id
         mods = replay_info.mods.value
@@ -539,5 +539,5 @@ class Loader:
         if result:
             self.log.debug("Loading replay for replay info %s from cache",
                 replay_info)
-            return wtc.decompress(result[0], decompressed_lzma=True)
+            return result[0]
         self.log.log(TRACE, "No replay found in cache")
