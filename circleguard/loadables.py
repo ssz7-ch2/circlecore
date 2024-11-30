@@ -457,12 +457,13 @@ class ReplayCache(ReplayContainer):
     For databases created in later versions, this is a nonissue and the lookup
     is fast.
     """
-    def __init__(self, path, num_maps, num_replays):
+    def __init__(self, path, map_id, user_id):
         super().__init__(False)
         self.path = path
-        self.num_maps = num_maps
-        self.limit = num_replays * num_maps
-        self.replays = []
+        self.map_id = map_id
+        self.user_id = user_id
+        self.limit = 1
+        self.replay = None
         conn = sqlite3.connect(path)
         self.cursor = conn.cursor()
 
@@ -476,31 +477,21 @@ class ReplayCache(ReplayContainer):
             """
         ).fetchall()
 
-        # flatten map_ids, because it's actually a list of lists
-        map_ids = [item[0] for item in map_ids]
-        chosen_maps = random.choices(map_ids, k=self.num_maps)
-
-        subclauses = [f"map_id = {chosen_map}" for chosen_map in chosen_maps]
-        where_clause = " OR ".join(subclauses)
-
-        # TODO LIMIT clause isn't quite right here, some maps will have less
-        # than ``num_replays`` stored
         infos = self.cursor.execute(
             f"""
             SELECT user_id, map_id, replay_data, replay_id, mods
             FROM replays
-            WHERE {where_clause}
+            WHERE map_id = {self.map_id} AND user_id = {self.user_id}
             LIMIT {self.limit}
             """
         )
 
-        for info in infos:
-            r = CachedReplay(info[0], info[1], info[4], info[2], info[3])
-            self.replays.append(r)
+        info = infos.fetchone()
+        self.replay = CachedReplay(info[0], info[1], info[4], info[2], info[3])
         self.info_loaded = True
 
     def all_replays(self):
-        return self.replays
+        return [self.replay]
 
     def __eq__(self, other):
         return self.path == other.path
@@ -1533,8 +1524,7 @@ class CachedReplay(Replay):
     def load(self, loader, cache):
         if self.loaded:
             return
-        decompressed = wtc.decompress(self.replay_data)
-        replay_data = osrparse.parse_replay_data(decompressed, decoded=True)
+        replay_data = osrparse.parse_replay_data(self.replay_data, decoded=True, decompressed=False)
         self._process_replay_data(replay_data)
         self.loaded = True
 
